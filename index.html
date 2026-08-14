@@ -138,6 +138,18 @@
   .dropzone.ok{ border-style: solid; border-color: var(--firuzeh-dim); cursor: default; }
   .dropzone.ok:hover{ background: var(--panel); border-color: var(--firuzeh-dim); }
 
+  .status-detail{
+    margin-top: 14px;
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    line-height: 2;
+    direction: ltr;
+    display: inline-block;
+  }
+  .status-detail .fail{ color: var(--gold); }
+  .status-detail .ok-line{ color: var(--firuzeh); }
+
   code.inline{
     font-family: 'JetBrains Mono', monospace;
     background: var(--panel-2);
@@ -380,6 +392,7 @@
     <div class="dropzone-inner">
       <p class="main" id="statusMain">در حال جست‌وجوی فایل‌های SRT…</p>
       <p class="hint" id="statusHint">looking in this folder</p>
+      <div class="status-detail" id="statusDetail"></div>
     </div>
   </div>
   <div class="filmstrip" id="stripBottom">
@@ -413,6 +426,7 @@
   const dropzone = document.getElementById('dropzone');
   const statusMain = document.getElementById('statusMain');
   const statusHint = document.getElementById('statusHint');
+  const statusDetail = document.getElementById('statusDetail');
   const fileChips = document.getElementById('fileChips');
   const searchInput = document.getElementById('searchInput');
   const results = document.getElementById('results');
@@ -504,11 +518,14 @@
     return out;
   }
 
-  function setStatus(state, main, hint){
+  function setStatus(state, main, hint, detailLines){
     dropzone.classList.remove('loading', 'error', 'ok');
     dropzone.classList.add(state);
     statusMain.textContent = main;
     statusHint.textContent = hint;
+    statusDetail.innerHTML = (detailLines || [])
+      .map(l => `<div class="${l.ok ? 'ok-line' : 'fail'}">${l.ok ? '✓' : '✕'} ${escapeHTML(l.name)} — ${escapeHTML(l.reason)}</div>`)
+      .join('');
   }
 
   // --- Discover .srt filenames sitting next to this page ---
@@ -554,25 +571,43 @@
     }
 
     let loaded = 0;
+    const attempts = [];
     await Promise.all(filenames.map(async (name) => {
       try{
         const res = await fetch(name, { cache: 'no-store' });
-        if(!res.ok) return;
+        if(!res.ok){
+          attempts.push({ name, ok: false, reason: `HTTP ${res.status}` });
+          return;
+        }
         const text = await res.text();
-        library[name] = { cues: parseSRT(text) };
+        const cues = parseSRT(text);
+        if(!cues.length){
+          attempts.push({ name, ok: false, reason: 'loaded, but 0 valid cues parsed' });
+          return;
+        }
+        library[name] = { cues };
+        attempts.push({ name, ok: true, reason: `${cues.length} cues` });
         loaded++;
-      }catch(e){ /* skip unreadable file */ }
+      }catch(e){
+        attempts.push({ name, ok: false, reason: e.message || 'fetch failed' });
+      }
     }));
 
     if(!loaded){
       setStatus('error',
         'فایل‌ها پیدا شدند اما بار نشدند',
-        'check filenames in manifest.json match actual files, and that the page is served over http');
+        'HTTP 404 usually means the name in manifest.json doesn\'t exactly match the file on disk (check spelling, case, and extension):',
+        attempts);
       updateCueCount();
       return;
     }
 
-    setStatus('ok', `${loaded} فایل بار شد`, 'auto-loaded from this folder');
+    const failed = attempts.filter(a => !a.ok);
+    if(failed.length){
+      setStatus('ok', `${loaded} از ${filenames.length} فایل بار شد`, 'some files failed to load:', failed);
+    }else{
+      setStatus('ok', `${loaded} فایل بار شد`, 'auto-loaded from this folder');
+    }
     renderChips();
     updateCueCount();
     runSearch();
