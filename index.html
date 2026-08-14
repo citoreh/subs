@@ -272,7 +272,7 @@
     margin-top: 26px;
     display:flex;
     flex-direction: column;
-    gap: 30px;
+    gap: 10px;
   }
 
   .empty-state{
@@ -289,11 +289,14 @@
     font-weight: 600;
   }
 
-  /* ---------- Result groups (one per file) ---------- */
+  /* ---------- Result groups (one per file, collapsible) ---------- */
   .group{
     display:flex;
     flex-direction: column;
-    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--panel);
   }
 
   .group-head{
@@ -301,9 +304,30 @@
     align-items:center;
     justify-content: space-between;
     gap: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--line);
+    padding: 14px 16px;
+    cursor: pointer;
+    background: var(--panel);
+    border: none;
+    width: 100%;
+    text-align: right;
+    transition: background .15s ease;
   }
+  .group-head:hover{ background: var(--panel-2); }
+
+  .group-head-left{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .chevron{
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    stroke: var(--ink-dimmer);
+    transition: transform .2s ease;
+  }
+  .group.expanded .chevron{ transform: rotate(180deg); }
 
   .file-badge{
     display:inline-flex;
@@ -313,7 +337,7 @@
     border: 1px solid var(--line);
     border-radius: 6px;
     padding: 7px 12px;
-    max-width: 100%;
+    min-width: 0;
   }
   .file-badge svg{
     flex-shrink: 0;
@@ -338,10 +362,17 @@
     direction: ltr;
   }
 
+  .group-cards-outer{
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height .25s ease;
+  }
+
   .group-cards{
     display:flex;
     flex-direction: column;
     gap: 10px;
+    padding: 4px 16px 16px;
   }
 
   .card{
@@ -447,9 +478,7 @@
   @media (max-width: 560px){
     h1{ font-size: 26px; }
     .wrap{ padding: 32px 16px 80px; }
-    .group-head{ flex-direction: column; align-items:flex-start; gap:8px; }
-    .file-badge{ max-width: 100%; }
-    .file-badge span{ max-width: 220px; }
+    .file-badge span{ max-width: 160px; }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -521,6 +550,7 @@
 
   const FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
   const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+  const CHEVRON_ICON = '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
 
   function stripExtension(name){
     return name.replace(/\.srt$/i, '');
@@ -825,21 +855,29 @@
       return;
     }
 
-    // most relevant files (most matches) first
-    groups.sort((a, b) => b.matches.length - a.matches.length || a.fileName.localeCompare(b.fileName, 'fa'));
+    // alphabetical by filename (without extension), Persian collation
+    groups.sort((a, b) => stripExtension(a.fileName).localeCompare(stripExtension(b.fileName), 'fa'));
 
     const frag = document.createDocumentFragment();
     groups.forEach(group => {
       const groupEl = document.createElement('div');
       groupEl.className = 'group';
 
-      const head = document.createElement('div');
+      const head = document.createElement('button');
       head.className = 'group-head';
+      head.type = 'button';
+      head.setAttribute('aria-expanded', 'false');
       head.innerHTML = `
-        <div class="file-badge">${FILE_ICON}<span>${escapeHTML(stripExtension(group.fileName))}</span></div>
+        <div class="group-head-left">
+          ${CHEVRON_ICON}
+          <div class="file-badge">${FILE_ICON}<span>${escapeHTML(stripExtension(group.fileName))}</span></div>
+        </div>
         <div class="group-count">${group.matches.length} match${group.matches.length === 1 ? '' : 'es'}</div>
       `;
       groupEl.appendChild(head);
+
+      const cardsOuter = document.createElement('div');
+      cardsOuter.className = 'group-cards-outer';
 
       const cardsWrap = document.createElement('div');
       cardsWrap.className = 'group-cards';
@@ -882,7 +920,15 @@
         cardsWrap.appendChild(card);
       });
 
-      groupEl.appendChild(cardsWrap);
+      cardsOuter.appendChild(cardsWrap);
+      groupEl.appendChild(cardsOuter);
+
+      head.addEventListener('click', () => {
+        const isExpanded = groupEl.classList.toggle('expanded');
+        head.setAttribute('aria-expanded', String(isExpanded));
+        cardsOuter.style.maxHeight = isExpanded ? cardsWrap.scrollHeight + 'px' : '0px';
+      });
+
       frag.appendChild(groupEl);
     });
     results.appendChild(frag);
