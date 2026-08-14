@@ -538,8 +538,15 @@
     //    Persian filenames.
     if(/\.github\.io$/i.test(location.hostname)){
       const owner = location.hostname.split('.')[0];
-      const segments = location.pathname.split('/').filter(Boolean);
-      segments.pop(); // drop the html filename itself, keep directory segments
+
+      // Determine the *directory* the page lives in, regardless of whether
+      // the URL includes the filename (…/subs/srt-search.html) or is a bare
+      // trailing-slash directory URL (…/subs/).
+      let dirPath = location.pathname;
+      if(!dirPath.endsWith('/')){
+        dirPath = dirPath.slice(0, dirPath.lastIndexOf('/') + 1);
+      }
+      const segments = dirPath.split('/').filter(Boolean);
 
       const candidates = [];
       if(segments.length){
@@ -551,7 +558,9 @@
 
       for(const { repo, path } of candidates){
         try{
-          const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+          const api = path
+            ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+            : `https://api.github.com/repos/${owner}/${repo}/contents`;
           const res = await fetch(api, { headers: { 'Accept': 'application/vnd.github+json' } });
           if(!res.ok) continue;
           const listing = await res.json();
