@@ -228,13 +228,32 @@
     font-family: 'Vazirmatn', sans-serif;
     font-size: 19px;
     font-weight: 500;
-    padding: 16px 52px 16px 20px;
+    padding: 16px 52px 16px 46px;
     outline: none;
     transition: border-color .15s ease, background .15s ease;
   }
   input#searchInput::placeholder{ color: var(--ink-dimmer); font-weight: 400; }
   input#searchInput:focus{ border-color: var(--firuzeh); background: var(--panel-2); }
   input#searchInput:disabled{ opacity: .5; cursor: not-allowed; }
+
+  .clear-btn{
+    position: absolute;
+    left: 14px;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--ink-dimmer);
+    cursor: pointer;
+    display: none;
+    align-items:center; justify-content:center;
+    font-size: 14px;
+    line-height: 1;
+    font-family: sans-serif;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  .clear-btn:hover{ color: var(--ink); border-color: var(--gold); }
+  .search-box.has-value .clear-btn{ display:flex; }
 
   .search-meta{
     display:flex;
@@ -253,7 +272,7 @@
     margin-top: 26px;
     display:flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 30px;
   }
 
   .empty-state{
@@ -270,11 +289,66 @@
     font-weight: 600;
   }
 
+  /* ---------- Result groups (one per file) ---------- */
+  .group{
+    display:flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .group-head{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .file-badge{
+    display:inline-flex;
+    align-items:center;
+    gap: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 12px;
+    max-width: 100%;
+  }
+  .file-badge svg{
+    flex-shrink: 0;
+    width: 15px; height: 15px;
+    stroke: var(--firuzeh);
+  }
+  .file-badge span{
+    font-family: 'Vazirmatn', sans-serif;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .group-count{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-dimmer);
+    white-space: nowrap;
+    direction: ltr;
+  }
+
+  .group-cards{
+    display:flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .card{
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 18px 20px;
+    padding: 16px 20px;
     position: relative;
     overflow: hidden;
     cursor: pointer;
@@ -296,7 +370,7 @@
     display:flex;
     justify-content: space-between;
     align-items:center;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     direction: ltr;
   }
 
@@ -311,17 +385,18 @@
     letter-spacing: 0.3px;
   }
 
-  .filename{
+  .copy-hint{
+    display:flex;
+    align-items:center;
+    gap: 5px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 13.5px;
-    font-weight: 700;
-    color: var(--ink);
-    direction: rtl;
-    max-width: 60%;
-    overflow:hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 10.5px;
+    color: var(--ink-dimmer);
+    opacity: 0;
+    transition: opacity .15s ease;
   }
+  .card:hover .copy-hint{ opacity: 1; }
+  .copy-hint svg{ width: 12px; height: 12px; stroke: var(--ink-dimmer); }
 
   .cue-line{
     font-size: 14px;
@@ -372,8 +447,9 @@
   @media (max-width: 560px){
     h1{ font-size: 26px; }
     .wrap{ padding: 32px 16px 80px; }
-    .card-head{ flex-direction: column-reverse; align-items:flex-start; gap:6px; }
-    .filename{ max-width: 100%; }
+    .group-head{ flex-direction: column; align-items:flex-start; gap:8px; }
+    .file-badge{ max-width: 100%; }
+    .file-badge span{ max-width: 220px; }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -408,9 +484,10 @@
   <div class="files" id="fileChips"></div>
 
   <div class="search-block">
-    <div class="search-box">
+    <div class="search-box" id="searchBox">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      <input type="text" id="searchInput" placeholder="عبارت مورد نظر را بنویسید…" disabled>
+      <input type="text" id="searchInput" placeholder="عبارت مورد نظر را بنویسید…" disabled autocomplete="off" spellcheck="false">
+      <button class="clear-btn" id="clearBtn" type="button" title="پاک کردن">×</button>
     </div>
     <div class="search-meta">
       <span id="cueCount">0 cues loaded</span>
@@ -434,11 +511,20 @@
   const statusHint = document.getElementById('statusHint');
   const statusDetail = document.getElementById('statusDetail');
   const fileChips = document.getElementById('fileChips');
+  const searchBox = document.getElementById('searchBox');
   const searchInput = document.getElementById('searchInput');
+  const clearBtn = document.getElementById('clearBtn');
   const results = document.getElementById('results');
   const emptyState = document.getElementById('emptyState');
   const cueCountEl = document.getElementById('cueCount');
   const matchCountEl = document.getElementById('matchCount');
+
+  const FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+  const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+
+  function stripExtension(name){
+    return name.replace(/\.srt$/i, '');
+  }
 
   // store: { fileName: { cues: [{index, start, end, text, normText}] } }
   let library = {};
@@ -674,8 +760,22 @@
 
   let debounceTimer = null;
   searchInput.addEventListener('input', () => {
+    searchBox.classList.toggle('has-value', searchInput.value.length > 0);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runSearch, 120);
+  });
+  searchInput.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){
+      searchInput.value = '';
+      searchBox.classList.remove('has-value');
+      runSearch();
+    }
+  });
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    searchBox.classList.remove('has-value');
+    searchInput.focus();
+    runSearch();
   });
 
   function runSearch(){
@@ -695,24 +795,29 @@
       return;
     }
 
-    let matches = [];
+    // gather matches, grouped by file, in chronological (cue) order
+    const groups = [];
     Object.keys(library).forEach(fileName => {
       const cues = library[fileName].cues;
+      const fileMatches = [];
       cues.forEach((cue, i) => {
         if(cue.normText.includes(normQuery)){
-          matches.push({
-            fileName,
+          fileMatches.push({
             cue,
             prev: cues[i - 1] || null,
             next: cues[i + 1] || null
           });
         }
       });
+      if(fileMatches.length) groups.push({ fileName, matches: fileMatches });
     });
 
-    matchCountEl.textContent = `${matches.length} match${matches.length === 1 ? '' : 'es'}`;
+    const totalMatches = groups.reduce((sum, g) => sum + g.matches.length, 0);
+    matchCountEl.textContent = totalMatches
+      ? `${totalMatches} match${totalMatches === 1 ? '' : 'es'} in ${groups.length} file${groups.length === 1 ? '' : 's'}`
+      : '';
 
-    if(!matches.length){
+    if(!totalMatches){
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.innerHTML = `<div class="big">نتیجه‌ای یافت نشد</div>عبارت دیگری را امتحان کنید`;
@@ -720,43 +825,65 @@
       return;
     }
 
+    // most relevant files (most matches) first
+    groups.sort((a, b) => b.matches.length - a.matches.length || a.fileName.localeCompare(b.fileName, 'fa'));
+
     const frag = document.createDocumentFragment();
-    matches.forEach(m => {
-      const card = document.createElement('div');
-      card.className = 'card';
+    groups.forEach(group => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'group';
 
       const head = document.createElement('div');
-      head.className = 'card-head';
-      head.innerHTML = `<span class="timestamp">${m.cue.start} → ${m.cue.end}</span><span class="filename">${escapeHTML(m.fileName)}</span>`;
-      card.appendChild(head);
+      head.className = 'group-head';
+      head.innerHTML = `
+        <div class="file-badge">${FILE_ICON}<span>${escapeHTML(stripExtension(group.fileName))}</span></div>
+        <div class="group-count">${group.matches.length} match${group.matches.length === 1 ? '' : 'es'}</div>
+      `;
+      groupEl.appendChild(head);
 
-      if(m.prev){
-        const p = document.createElement('div');
-        p.className = 'cue-line context';
-        p.textContent = m.prev.text;
-        card.appendChild(p);
-      }
+      const cardsWrap = document.createElement('div');
+      cardsWrap.className = 'group-cards';
 
-      const cur = document.createElement('div');
-      cur.className = 'cue-line match';
-      cur.innerHTML = highlight(m.cue.text, m.cue.normText, query, normQuery);
-      card.appendChild(cur);
+      group.matches.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'card';
 
-      if(m.next){
-        const n = document.createElement('div');
-        n.className = 'cue-line context';
-        n.textContent = m.next.text;
-        card.appendChild(n);
-      }
+        const cardHead = document.createElement('div');
+        cardHead.className = 'card-head';
+        cardHead.innerHTML = `<span class="timestamp">${m.cue.start} → ${m.cue.end}</span><span class="copy-hint">${COPY_ICON}کپی زمان</span>`;
+        card.appendChild(cardHead);
 
-      const badge = document.createElement('div');
-      badge.className = 'copied-badge';
-      badge.textContent = 'COPIED';
-      card.appendChild(badge);
+        if(m.prev){
+          const p = document.createElement('div');
+          p.className = 'cue-line context';
+          p.textContent = m.prev.text;
+          card.appendChild(p);
+        }
 
-      card.addEventListener('click', () => copyTimestamp(card, m.cue.start));
+        const cur = document.createElement('div');
+        cur.className = 'cue-line match';
+        cur.innerHTML = highlight(m.cue.text, m.cue.normText, query, normQuery);
+        card.appendChild(cur);
 
-      frag.appendChild(card);
+        if(m.next){
+          const n = document.createElement('div');
+          n.className = 'cue-line context';
+          n.textContent = m.next.text;
+          card.appendChild(n);
+        }
+
+        const badge = document.createElement('div');
+        badge.className = 'copied-badge';
+        badge.textContent = 'COPIED';
+        card.appendChild(badge);
+
+        card.addEventListener('click', () => copyTimestamp(card, m.cue.start));
+
+        cardsWrap.appendChild(card);
+      });
+
+      groupEl.appendChild(cardsWrap);
+      frag.appendChild(groupEl);
     });
     results.appendChild(frag);
   }
