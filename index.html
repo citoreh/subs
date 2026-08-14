@@ -144,7 +144,8 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 11.5px;
     line-height: 2;
-    direction: ltr;
+    direction: rtl;
+    unicode-bidi: plaintext;
     display: inline-block;
   }
   .status-detail .fail{ color: var(--gold); }
@@ -531,26 +532,33 @@
   // --- Discover .srt filenames sitting next to this page ---
 
   async function discoverFilenames(){
-    // 1) preferred: an explicit manifest.json — a plain JSON array of filenames
-    try{
-      const res = await fetch('manifest.json', { cache: 'no-store' });
-      if(res.ok){
-        const list = await res.json();
-        if(Array.isArray(list) && list.length) return list;
-      }
-    }catch(e){ /* fall through */ }
-
-    // 2) fallback: parse the folder's own directory listing (works with e.g.
-    //    `python3 -m http.server`, which auto-generates an index page)
+    // 1) primary: parse the folder's own directory listing — fully automatic,
+    //    works out of the box with e.g. `python3 -m http.server`, which
+    //    auto-generates an index page listing every file in the folder.
     try{
       const res = await fetch('./', { cache: 'no-store' });
       if(res.ok){
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        const hrefs = Array.from(doc.querySelectorAll('a'))
-          .map(a => decodeURIComponent(a.getAttribute('href') || ''))
-          .filter(h => /\.srt$/i.test(h));
-        if(hrefs.length) return hrefs;
+        const items = Array.from(doc.querySelectorAll('a'))
+          .map(a => ({
+            href: a.getAttribute('href') || '',       // keep as-is (already correctly percent-encoded by the server)
+            label: a.textContent.trim()                 // human-readable name, for display
+          }))
+          .filter(item => /\.srt$/i.test(item.href));
+        if(items.length) return items;
+      }
+    }catch(e){ /* fall through */ }
+
+    // 2) fallback: an explicit manifest.json — a plain JSON array of filenames —
+    //    for servers that don't expose a directory listing
+    try{
+      const res = await fetch('manifest.json', { cache: 'no-store' });
+      if(res.ok){
+        const list = await res.json();
+        if(Array.isArray(list) && list.length){
+          return list.map(name => ({ href: name, label: name }));
+        }
       }
     }catch(e){ /* fall through */ }
 
@@ -560,43 +568,43 @@
   async function loadFromFolder(){
     setStatus('loading', 'در حال جست‌وجوی فایل‌های SRT…', 'looking in this folder');
 
-    const filenames = await discoverFilenames();
+    const items = await discoverFilenames();
 
-    if(!filenames.length){
+    if(!items.length){
       setStatus('error',
         'فایل SRT‌ای پیدا نشد',
-        'add a manifest.json (array of filenames) next to this page, and serve the folder over http — not by double-clicking the file');
+        'serve this folder over http (e.g. python3 -m http.server) so the page can list its files — opening the file directly won\'t work');
       updateCueCount();
       return;
     }
 
     let loaded = 0;
     const attempts = [];
-    await Promise.all(filenames.map(async (name) => {
+    await Promise.all(items.map(async ({ href, label }) => {
       try{
-        const res = await fetch(name, { cache: 'no-store' });
+        const res = await fetch(href, { cache: 'no-store' });
         if(!res.ok){
-          attempts.push({ name, ok: false, reason: `HTTP ${res.status}` });
+          attempts.push({ name: label, ok: false, reason: `HTTP ${res.status}` });
           return;
         }
         const text = await res.text();
         const cues = parseSRT(text);
         if(!cues.length){
-          attempts.push({ name, ok: false, reason: 'loaded, but 0 valid cues parsed' });
+          attempts.push({ name: label, ok: false, reason: 'loaded, but 0 valid cues parsed' });
           return;
         }
-        library[name] = { cues };
-        attempts.push({ name, ok: true, reason: `${cues.length} cues` });
+        library[label] = { cues };
+        attempts.push({ name: label, ok: true, reason: `${cues.length} cues` });
         loaded++;
       }catch(e){
-        attempts.push({ name, ok: false, reason: e.message || 'fetch failed' });
+        attempts.push({ name: label, ok: false, reason: e.message || 'fetch failed' });
       }
     }));
 
     if(!loaded){
       setStatus('error',
         'فایل‌ها پیدا شدند اما بار نشدند',
-        'HTTP 404 usually means the name in manifest.json doesn\'t exactly match the file on disk (check spelling, case, and extension):',
+        'unexpected — see per-file errors below:',
         attempts);
       updateCueCount();
       return;
@@ -604,7 +612,7 @@
 
     const failed = attempts.filter(a => !a.ok);
     if(failed.length){
-      setStatus('ok', `${loaded} از ${filenames.length} فایل بار شد`, 'some files failed to load:', failed);
+      setStatus('ok', `${loaded} از ${items.length} فایل بار شد`, 'some files failed to load:', failed);
     }else{
       setStatus('ok', `${loaded} فایل بار شد`, 'auto-loaded from this folder');
     }
